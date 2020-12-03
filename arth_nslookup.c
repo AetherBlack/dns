@@ -5,14 +5,17 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
+#define DEFAULT_NAME_SERVER "8.8.8.8"
+#define DNS_PORT 53
+
 int main(int argc, char *argv[])
 {
     int opt;
     int Hopt = 0;
-    char DOMAIN[255];
+    char DOMAIN[255];//cf RFC 255 octects max
     char DNS_SERVER[255];
     /* DEFAULT NS */
-    memcpy(DNS_SERVER, "8.8.8.8", 8);
+    memcpy(DNS_SERVER, DEFAULT_NAME_SERVER, 8);
 
     /* GET ARGUMENT */
     while ((opt = getopt(argc, argv, ":s:help:H:")) != -1)
@@ -26,12 +29,12 @@ int main(int argc, char *argv[])
             /* NEW NAME SERVER */
             case 's':
                 printf("> server\nServer: %s\n", optarg);
-                memcpy(DNS_SERVER, optarg, strlen(optarg));
+                memcpy(DNS_SERVER, optarg, strnlen(optarg, 255));
                 break;
             /* HOST TO RESOLVE */
             case 'H':
                 /* COPY BEFORE PRINT (repair bug) */
-                memcpy(DOMAIN, optarg, strlen(optarg));
+                memcpy(DOMAIN, optarg, strnlen(optarg, 255));
                 Hopt = 1;
                 break;
             /* UNKNOWN OPTION */
@@ -54,7 +57,7 @@ int main(int argc, char *argv[])
     SOCKET sock;
     SOCKADDR_IN sin;
 
-    /* BUFFER FOR DATA */
+    /* BUFFER FOR DATA (PACKET SIZE MAX) */
     char buffer[65536];
 
     WSAStartup(MAKEWORD(2,0), &WSAData);
@@ -63,68 +66,62 @@ int main(int argc, char *argv[])
     sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
     /* NAME SERVER TO QUERY */
-    //sin.sin_addr.s_addr = inet_addr("8.8.8.8");
     sin.sin_addr.s_addr = inet_addr(DNS_SERVER);
     sin.sin_family = AF_INET;
     /* DNS PORT */
-    sin.sin_port = htons(53);
+    sin.sin_port = htons(DNS_PORT);
 
     /* CONNECT TO THE HOST */
     connect(sock, (SOCKADDR *)&sin, sizeof(sin));
 
     /* DNS HEADERS */
     int DNS_HEADERS_LENGTH = 13;
-    char DNS_HEADERS[13] = "\x00\x02\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x06";
+    char DNS_HEADERS[13] = {
+                                '\x00', '\x02', //Identifier
+                                '\x01',         //Request, query, no troncate, recursif
+                                '\x00',         //No recursif, always 0, no error
+                                '\x00', '\x01', //Number of question
+                                '\x00', '\x00', //Number of answer
+                                '\x00', '\x00', //Authority
+                                '\x00', '\x00', //Additionnal data
+                                '\x06'          //Futur length of the domain
+                            };
     
     /* DNS FOOTER */
     int DNS_FOOTER_LENGTH = 5;
-    char * DNS_FOOTER = "\x00\x00\x01\x00\x01";
+    char DNS_FOOTER[5] = {
+                            '\x00',         //End of string
+                            '\x00', '\x01', //type A DNS query
+                            '\x00', '\x01'  //class IN IP Addr
+                        };
 
     /* HOST NAME TO QUERY */
-    //char DOMAIN[255] = "maps.google.com";//cf RFC 255 octects max
-    int DNS_DOMAIN_LENGTH = strlen(DOMAIN);
+    int DNS_DOMAIN_LENGTH = strnlen(DOMAIN, 255);
 
     /* TOTAL LENGTH */
     int QUERY_LENGTH = DNS_HEADERS_LENGTH + DNS_DOMAIN_LENGTH + DNS_FOOTER_LENGTH;
 
 
-    //int index = DNS_DOMAIN_LENGTH;
-    int index = 0;
-    int dns_not_root_domain = 0;
-    int bool = 0;
-    int dot = 0x0;
+    int index = DNS_DOMAIN_LENGTH;
+    int dns_not_root_domain = -1;
 
-    /* GET THE LENGTH OF THE DOMAIN WHIOUT THE ROOT ex: .org, .fr */
-    while (DOMAIN[index] != '\x00')
-    {
-        if (DOMAIN[index] == 0x2e)//0x2e = 46 = .
-            bool = 1;
-        /* INCREMENT IF DOMAIN */
-        if (!bool)
-            dns_not_root_domain++;
-        /* BREAK END */
-        else
-            break;
-        
-        index++;
-    }
-
-    index = DNS_DOMAIN_LENGTH;
-
-    /* REPLACE DOT BY 0x3 * n points */
+    /* REPLACE DOT BY length of subdomain */
     while (index != 0)
     {
-        /* IF DOT REPLACE WITH 0x3 * n points */
+        /* IF DOT REPLACE WITH length of subdomain */
         if (DOMAIN[index] == 0x2e)//0x2e = 46 = .
         {
-            dot = dot + 0x3;
-            DOMAIN[index] = dot;
+            DOMAIN[index] = dns_not_root_domain;
+            dns_not_root_domain = 0;
         }
+        else
+            dns_not_root_domain++;
 
         index--;
     }
 
-    /* CHANGE THE LENGTH OF THE DOMAIN */
+    /* CHANGE THE LENGTH OF THE DOMAIN (DNS DATA) */
+    dns_not_root_domain++;
     DNS_HEADERS[12] = dns_not_root_domain;
 
 
@@ -140,13 +137,14 @@ int main(int argc, char *argv[])
     /* SEND THE PACKET */
     send(sock, query, QUERY_LENGTH, 0);
 
-    /* GET THE RESPONSE TIME */
-    struct timeval start, stop;// = clock();
+    /* START RESPONSE TIME */
+    struct timeval start, stop;
     gettimeofday(&start, NULL);
 
     /* RECV THE DATA INTO buffer */
     recv(sock, buffer, sizeof(buffer), 0);
 
+    /* END RESPONSE */
     gettimeofday(&stop, NULL);
 
     /* SEEK THE INDEX TO THE IP ADDR */
