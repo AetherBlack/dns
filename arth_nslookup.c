@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
                 break;
             /* HOST TO RESOLVE */
             case 'H':
-                printf("> %s\nAddress: ", optarg);
+                /* COPY BEFORE PRINT (repair bug) */
                 memcpy(DOMAIN, optarg, strlen(optarg));
                 Hopt = 1;
                 break;
@@ -47,6 +47,7 @@ int main(int argc, char *argv[])
         printf("-H option need to be set !\n");
         return 1;
     }
+    printf("> %s:\nAddress: ", DOMAIN);
 
     /* VAR FOR SOCKET */
     WSADATA WSAData;
@@ -177,7 +178,11 @@ int main(int argc, char *argv[])
     }
 
     /* PRINT RESPONSE TIME */
-    printf("Response Time: %lu ms\n", ((stop.tv_usec - start.tv_usec) / 1000)); 
+    if (stop.tv_sec == start.tv_sec)
+        printf("Response Time: %lu ms\n", ((stop.tv_usec - start.tv_usec) / 1000));
+    else
+        /* NEXT MS BUT RESPONSE TIME < 1s */
+        printf("Response Time: %lu ms\n", ((((stop.tv_sec - start.tv_sec) * 1000000) + (stop.tv_usec - start.tv_usec)) / 1000));
 
     /* CLOSE SOCKET */
     closesocket(sock);
