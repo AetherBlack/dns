@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
         printf("-H option need to be set !\n");
         return 1;
     }
-    printf("> %s:\nAddress: ", DOMAIN);
+    printf("> %s\nAddress: ", DOMAIN);
 
     /* VAR FOR SOCKET */
     WSADATA WSAData;
