@@ -1,46 +1,49 @@
 #include <winsock2.h>
 #include <stdio.h>
-#include <unistd.h>
-#include <sys/time.h>
+#include <windows.h>
+#include "getopt.h"
+#include <time.h>
 
 #pragma comment(lib, "ws2_32.lib")
+
+#pragma warning(disable:4996) 
 
 #define DEFAULT_NAME_SERVER "8.8.8.8"
 #define DNS_PORT 53
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     int opt;
     int Hopt = 0;
-    char DOMAIN[255];//cf RFC 255 octects max
-    char DNS_SERVER[255];
+    /* DOMAIN TO SEARCH */
+    char* DOMAIN = NULL;
+    char* DNS_SERVER = NULL;
     /* DEFAULT NS */
-    memcpy(DNS_SERVER, DEFAULT_NAME_SERVER, 8);
+    DNS_SERVER = DEFAULT_NAME_SERVER;
 
     /* GET ARGUMENT */
     while ((opt = getopt(argc, argv, ":s:help:H:")) != -1)
     {
-        switch(opt)
+        switch (opt)
         {
             /* EXAMPLE */
-            case 'h':
-                printf("%s [-s NAME_SERVER] -H DNS_HOST\nNAME_SERVER default value: 8.8.8.8\n", argv[0]);
-                return 0;
+        case 'h':
+            printf("%s [-s NAME_SERVER] -H DNS_HOST\n\t-s NAME_SERVER -> default value: %s\n", argv[0], DEFAULT_NAME_SERVER);
+            return 0;
             /* NEW NAME SERVER */
-            case 's':
-                printf("> server\nServer: %s\n", optarg);
-                memcpy(DNS_SERVER, optarg, strnlen(optarg, 255));
-                break;
+        case 's':
+            printf("> server\nServer: %s\n", optarg);
+            DNS_SERVER = optarg;
+            break;
             /* HOST TO RESOLVE */
-            case 'H':
-                /* COPY BEFORE PRINT (repair bug) */
-                memcpy(DOMAIN, optarg, strnlen(optarg, 255));
-                Hopt = 1;
-                break;
+        case 'H':
+            DOMAIN = optarg;
+            Hopt = 1;
+            break;
             /* UNKNOWN OPTION */
-            case '?':
-                printf("Unknow option: %c\n", optopt);
-                return 1;
+        case '?':
+            printf("Unknow option: %c\n", optopt);
+            return 1;
         }
     }
 
@@ -60,7 +63,11 @@ int main(int argc, char *argv[])
     /* BUFFER FOR DATA (PACKET SIZE MAX) */
     char buffer[65536];
 
-    WSAStartup(MAKEWORD(2,0), &WSAData);
+    if (WSAStartup(MAKEWORD(2, 0), &WSAData))
+    {
+        printf("Connection Error !");
+        return 1;
+    }
 
     /* UDP CONNECTION */
     sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -72,7 +79,7 @@ int main(int argc, char *argv[])
     sin.sin_port = htons(DNS_PORT);
 
     /* CONNECT TO THE HOST */
-    connect(sock, (SOCKADDR *)&sin, sizeof(sin));
+    connect(sock, (SOCKADDR*)&sin, sizeof(sin));
 
     /* DNS HEADERS */
     int DNS_HEADERS_LENGTH = 13;
@@ -85,15 +92,15 @@ int main(int argc, char *argv[])
                                 '\x00', '\x00', //Authority
                                 '\x00', '\x00', //Additionnal data
                                 '\x06'          //Futur length of the domain
-                            };
-    
+    };
+
     /* DNS FOOTER */
     int DNS_FOOTER_LENGTH = 5;
     char DNS_FOOTER[5] = {
                             '\x00',         //End of string
                             '\x00', '\x01', //type A DNS query
                             '\x00', '\x01'  //class IN IP Addr
-                        };
+    };
 
     /* HOST NAME TO QUERY */
     int DNS_DOMAIN_LENGTH = strnlen(DOMAIN, 255);
@@ -138,14 +145,14 @@ int main(int argc, char *argv[])
     send(sock, query, QUERY_LENGTH, 0);
 
     /* START RESPONSE TIME */
-    struct timeval start, stop;
-    gettimeofday(&start, NULL);
+    clock_t start, stop;
+    start = clock();
 
     /* RECV THE DATA INTO buffer */
     recv(sock, buffer, sizeof(buffer), 0);
 
     /* END RESPONSE */
-    gettimeofday(&stop, NULL);
+    stop = clock();
 
     /* SEEK THE INDEX TO THE IP ADDR */
     int SEEK_IPADDR = (34 + DNS_DOMAIN_LENGTH) - 4;
@@ -168,19 +175,15 @@ int main(int argc, char *argv[])
         else
             /* CHECK IF UNSIGNED */
             if (val < 0)
-                    printf("%d.", 256 + val);
-                else
-                    printf("%d.", val);
-        
+                printf("%d.", 256 + val);
+            else
+                printf("%d.", val);
+
         index++;
     }
 
     /* PRINT RESPONSE TIME */
-    if (stop.tv_sec == start.tv_sec)
-        printf("Response Time: %lu ms\n", ((stop.tv_usec - start.tv_usec) / 1000));
-    else
-        /* NEXT MS BUT RESPONSE TIME < 1s */
-        printf("Response Time: %lu ms\n", ((((stop.tv_sec - start.tv_sec) * 1000000) + (stop.tv_usec - start.tv_usec)) / 1000));
+    printf("Response Time: %d ms\n", (stop - start));
 
     /* CLOSE SOCKET */
     closesocket(sock);
