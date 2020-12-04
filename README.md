@@ -44,9 +44,9 @@ Response Time: 6 ms
 
 PS C:\Window\System32> .\arth_nslookup.exe -h
 C:\Window\System32\arth_nslookup.exe [-s NAME_SERVER] -H DNS_HOST
-NAME_SERVER default value: 8.8.8.8
+        -s NAME_SERVER -> default value: 8.8.8.8
 
 PS C:\Window\System32> .\arth_nslookup.exe -help
 C:\Window\System32\arth_nslookup.exe [-s NAME_SERVER] -H DNS_HOST
-NAME_SERVER default value: 8.8.8.8
+        -s NAME_SERVER -> default value: 8.8.8.8
 ```
